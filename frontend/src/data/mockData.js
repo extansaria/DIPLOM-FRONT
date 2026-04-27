@@ -1,5 +1,6 @@
 export const bodyParts = [
   { id: "arms", name: "Руки" },
+  { id: "shoulders", name: "Плечи" },
   { id: "chest", name: "Грудь" },
   { id: "back", name: "Спина" },
   { id: "core", name: "Кор" },
@@ -7,7 +8,8 @@ export const bodyParts = [
 ];
 
 export const muscleGroupsByBodyPart = {
-  arms: ["biceps", "triceps", "forearms", "shoulders", "brachialis"],
+  arms: ["biceps", "triceps", "forearms", "brachialis"],
+  shoulders: ["front-delt", "middle-delt", "rear-delt"],
   chest: ["pectoralis-major", "upper-chest", "lower-chest"],
   back: ["lats", "trapezius", "lower-back"],
   core: ["core", "obliques"],
@@ -18,8 +20,10 @@ export const muscleGroups = [
   { id: "biceps", name: "Бицепс" },
   { id: "triceps", name: "Трицепс" },
   { id: "forearms", name: "Предплечья" },
-  { id: "shoulders", name: "Плечи" },
   { id: "brachialis", name: "Брахиалис" },
+  { id: "front-delt", name: "Передняя дельта" },
+  { id: "middle-delt", name: "Средняя дельта" },
+  { id: "rear-delt", name: "Задняя дельта" },
   { id: "pectoralis-major", name: "Большая грудная" },
   { id: "upper-chest", name: "Верх груди" },
   { id: "lower-chest", name: "Низ груди" },
@@ -65,7 +69,7 @@ export const exercises = [
   {
     id: "ohp",
     name: "Жим гантелей сидя",
-    muscleGroup: "shoulders",
+    muscleGroup: "front-delt",
     description: "Силовое упражнение для передней и средней дельты.",
     technique: "Сохраняйте нейтральную спину, выжимайте гантели вверх по дуге и плавно опускайте.",
     mistakes: "Чрезмерный прогиб в пояснице, рывок в нижней точке.",

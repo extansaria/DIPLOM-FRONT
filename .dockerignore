@@ -1,0 +1,9 @@
+.git
+node_modules
+**/node_modules
+bundle.js
+dist
+build
+.DS_Store
+Thumbs.db
+*.log
