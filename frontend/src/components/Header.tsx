@@ -1,5 +1,7 @@
 import { BlogIcon, HomeIcon, LibraryIcon, ReviewsIcon, UserIcon, WorkoutIcon } from "./icons";
+import { SearchBar } from "./SearchBar";
 import type { PageId } from "../types";
+import type { SearchSuggestionItem } from "../types";
 
 const navItems: { key: PageId; label: string; icon: typeof HomeIcon }[] = [
   { key: "home", label: "Главная", icon: HomeIcon },
@@ -13,9 +15,25 @@ type HeaderProps = {
   currentPage: PageId;
   onNavigate: (page: PageId) => void;
   onOpenProfile: () => void;
+  searchTerm: string;
+  onSearchChange: (value: string) => void;
+  onSearch: () => void;
+  suggestions: SearchSuggestionItem[];
+  isSuggesting: boolean;
+  onSelectSuggestion: (item: SearchSuggestionItem) => void;
 };
 
-export function Header({ currentPage, onNavigate, onOpenProfile }: HeaderProps) {
+export function Header({
+  currentPage,
+  onNavigate,
+  onOpenProfile,
+  searchTerm,
+  onSearchChange,
+  onSearch,
+  suggestions,
+  isSuggesting,
+  onSelectSuggestion
+}: HeaderProps) {
   return (
     <header className="site-header">
       <div className="container header-inner">
@@ -35,9 +53,20 @@ export function Header({ currentPage, onNavigate, onOpenProfile }: HeaderProps) 
             </button>
           ))}
         </nav>
-        <button type="button" className="icon-btn" title="Личный кабинет" onClick={onOpenProfile}>
-          {UserIcon({ className: "ui-icon", size: 18 })}
-        </button>
+        <div className="header-right">
+          <SearchBar
+            value={searchTerm}
+            onChange={onSearchChange}
+            onSearch={onSearch}
+            suggestions={suggestions}
+            isSuggesting={isSuggesting}
+            onSelectSuggestion={onSelectSuggestion}
+            hideButtonWhenCollapsed
+          />
+          <button type="button" className="icon-btn" title="Личный кабинет" onClick={onOpenProfile}>
+            {UserIcon({ className: "ui-icon", size: 18 })}
+          </button>
+        </div>
       </div>
     </header>
   );

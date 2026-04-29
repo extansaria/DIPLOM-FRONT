@@ -9,7 +9,7 @@ export function WorkoutPage({ workouts }: WorkoutPageProps) {
   return (
     <>
       <h2 className="section-title">Моя тренировка</h2>
-      <p className="muted">Планировщик по дням недели. Добавляйте упражнения из модального окна карточки.</p>
+      <p className="muted">Выбирайте упражнения и составляйте свою тренировку</p>
       <section className="day-grid">
         {daysOfWeek.map((day) => (
           <article key={day} className="day-col">

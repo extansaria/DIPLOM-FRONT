@@ -379,8 +379,7 @@ export function MuscleMap({ onMuscleSelect }: MuscleMapProps) {
 
   return (
     <section className="muscle-board">
-      <h3 style={{ marginTop: 0 }}>Интерактивная анатомическая схема</h3>
-      <p className="muted">Наведите и кликните на группу мышц, чтобы перейти в каталог</p>
+      <h2 style={{ marginTop: 0 }}>Интерактивная анатомическая схема</h2>
       <div className="muscle-views">
         <div>
           <p className="muted">Вид спереди</p>
@@ -395,6 +394,7 @@ export function MuscleMap({ onMuscleSelect }: MuscleMapProps) {
           </div>
         </div>
       </div>
+      <p className="muted map-guide-line">Выберите мышечную группу, что бы увидеть список лучших упражнений для ее развития</p>
     </section>
   );
 }

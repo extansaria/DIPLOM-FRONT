@@ -133,6 +133,14 @@ function findDbMatchByTitle(title: string, matches: AiMatch[] | undefined): AiMa
   );
 }
 
+function findDbMatchForBlock(title: string, idx: number, matches: AiMatch[] | undefined): AiMatch | null {
+  const list = matches || [];
+  const byTitle = findDbMatchByTitle(title, list);
+  if (byTitle) return byTitle;
+  // Fallback: if the model reordered/shortened the name, keep DB links by position.
+  return list[idx] || null;
+}
+
 type ExerciseBlock = { title: string; why: string; tip: string };
 
 function parseExerciseBlocks(rawText: string): ExerciseBlock[] {
@@ -164,22 +172,32 @@ function parseExerciseBlocks(rawText: string): ExerciseBlock[] {
 }
 
 function renderAiMessageContent(msg: ChatMessage, onOpenExerciseBySlug?: (slug: string) => void): ReactNode {
+  const dbMatches = msg.matches || [];
+  if (!dbMatches.length) {
+    return toParagraphs(msg.text).map((para, idx) => (
+      <p key={`${msg.id}-p-${idx}`}>{linkifyMarkdownLinks(para)}</p>
+    ));
+  }
+
   const blocks = parseExerciseBlocks(msg.text);
   if (!blocks.length) {
     return toParagraphs(msg.text).map((para, idx) => (
       <p key={`${msg.id}-p-${idx}`}>{linkifyMarkdownLinks(para)}</p>
     ));
   }
-  return blocks.map((block, idx) => {
-    const dbMatch = findDbMatchByTitle(block.title, msg.matches);
+  const sourceLength = Math.max(dbMatches.length, blocks.length);
+  return Array.from({ length: sourceLength }).map((_, idx) => {
+    const block = blocks[idx] || { title: "", why: "", tip: "" };
+    const dbMatch = idx < dbMatches.length ? dbMatches[idx] : findDbMatchForBlock(block.title, idx, dbMatches);
+    const titleText = dbMatch?.title || block.title || `Упражнение ${idx + 1}`;
     return (
       <div key={`${msg.id}-${idx}`} className="ai-exercise-block">
         {dbMatch ? (
           <button type="button" className="ai-exercise-link" onClick={() => onOpenExerciseBySlug?.(dbMatch.slug)}>
-            {idx + 1}) {block.title}
+            {idx + 1}) {titleText}
           </button>
         ) : (
-          <p className="ai-exercise-title">{linkifyMarkdownLinks(`${idx + 1}) ${block.title}`)}</p>
+          <p className="ai-exercise-title">{linkifyMarkdownLinks(`${idx + 1}) ${titleText}`)}</p>
         )}
         {block.why ? (
           <p>
@@ -244,7 +262,8 @@ export function AiSupportWidget({ onOpenExerciseBySlug }: AiSupportWidgetProps) 
 
     try {
       const ac = new AbortController();
-      const timeoutId = setTimeout(() => ac.abort(), 35000);
+      // Backend can retry model calls; keep client timeout longer.
+      const timeoutId = setTimeout(() => ac.abort(), 130000);
       let res: Response;
       try {
         res = await fetch(`${API_BASE_URL}/api/ai/chat`, {
@@ -270,12 +289,18 @@ export function AiSupportWidget({ onOpenExerciseBySlug }: AiSupportWidgetProps) 
       };
       setMessages((prev) => [...prev, aiMessage]);
     } catch (error) {
+      const isAbortError =
+        (error instanceof DOMException && error.name === "AbortError") ||
+        String(error instanceof Error ? error.message : error).toLowerCase().includes("aborted");
+      const friendlyError = isAbortError
+        ? "AI долго отвечает. Попробуйте еще раз через пару секунд."
+        : `Не удалось получить ответ AI: ${String(error instanceof Error ? error.message : error)}`;
       setMessages((prev) => [
         ...prev,
         {
           id: `a-${Date.now() + 1}`,
           role: "ai",
-          text: `Не удалось получить ответ AI: ${String(error instanceof Error ? error.message : error)}`
+          text: friendlyError
         }
       ]);
     } finally {

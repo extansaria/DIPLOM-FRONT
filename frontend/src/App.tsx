@@ -45,6 +45,9 @@ export default function App() {
   });
   const [activeBodyPart, setActiveBodyPart] = useState<string | null>(null);
   const [activeMuscleGroup, setActiveMuscleGroup] = useState<string | null>(null);
+  const [equipmentFilters, setEquipmentFilters] = useState<
+    Array<"machine" | "free-weight" | "cardio" | "bodyweight" | "functional" | "kettlebell" | "barbell-dumbbell" | "stretching">
+  >([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
   const [isCatalogSearching, setIsCatalogSearching] = useState(false);
@@ -83,9 +86,33 @@ export default function App() {
         )
       : source;
     const bySelectedGroup = activeMuscleGroup ? byBodyPart.filter((item) => item.muscleGroup === activeMuscleGroup) : byBodyPart;
-    if (Array.isArray(catalogDbResults)) return bySelectedGroup;
-    return bySelectedGroup;
-  }, [exerciseList, catalogDbResults, activeBodyPart, activeMuscleGroup, searchTerm]);
+    const byEquipment =
+      equipmentFilters.length === 0
+        ? bySelectedGroup
+        : bySelectedGroup.filter((item) => {
+            const eq = String(item.equipment || "")
+              .toLowerCase()
+              .replace(/ё/g, "е");
+            const isMachine = eq.includes("тренажер") || eq.includes("блок");
+            const isFreeWeight = eq.includes("штанг") || eq.includes("гантел") || eq.includes("гриф") || eq.includes("блин");
+            const isCardio = eq.includes("кардио") || eq.includes("дорожк") || eq.includes("велотренаж") || eq.includes("эллипс");
+            const isBodyweight = eq.includes("собственн") || eq.includes("свой вес") || eq.includes("вес тела");
+            const isFunctional = eq.includes("функцион") || eq.includes("trx") || eq.includes("петл");
+            const isKettlebell = eq.includes("гир");
+            const isBarbellDumbbell = eq.includes("штанг") || eq.includes("гантел");
+            const isStretching = eq.includes("растяж") || eq.includes("мобил");
+            const hitMachine = equipmentFilters.includes("machine") && isMachine;
+            const hitFreeWeight = equipmentFilters.includes("free-weight") && isFreeWeight;
+            const hitCardio = equipmentFilters.includes("cardio") && isCardio;
+            const hitBodyweight = equipmentFilters.includes("bodyweight") && isBodyweight;
+            const hitFunctional = equipmentFilters.includes("functional") && isFunctional;
+            const hitKettlebell = equipmentFilters.includes("kettlebell") && isKettlebell;
+            const hitBarbellDumbbell = equipmentFilters.includes("barbell-dumbbell") && isBarbellDumbbell;
+            const hitStretching = equipmentFilters.includes("stretching") && isStretching;
+            return hitMachine || hitFreeWeight || hitCardio || hitBodyweight || hitFunctional || hitKettlebell || hitBarbellDumbbell || hitStretching;
+          });
+    return byEquipment;
+  }, [exerciseList, catalogDbResults, activeBodyPart, activeMuscleGroup, equipmentFilters, searchTerm]);
 
   async function searchCatalogInDb() {
     const query = searchTerm.trim();
@@ -162,11 +189,11 @@ export default function App() {
     setFavorites((prev) => (prev.some((item) => item.id === exercise.id) ? prev : [exercise, ...prev]));
   }
 
-  function addToWorkout(exercise: Exercise) {
-    const targetDay = daysOfWeek[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1];
+  function addToWorkout(exercise: Exercise, targetDay: string) {
+    if (!targetDay) return;
     setWorkouts((prev) => ({
       ...prev,
-      [targetDay]: prev[targetDay].some((item) => item.id === exercise.id) ? prev[targetDay] : [...prev[targetDay], exercise]
+      [targetDay]: [...(prev[targetDay] || []), exercise]
     }));
   }
 
@@ -204,10 +231,17 @@ export default function App() {
   function resetCatalogFilters() {
     setActiveBodyPart(null);
     setActiveMuscleGroup(null);
+    setEquipmentFilters([]);
     setCatalogDbResults(null);
     setCatalogSearchError("");
     setSearchTerm("");
     setCurrentPage("catalog");
+  }
+
+  function toggleEquipmentFilter(
+    value: "machine" | "free-weight" | "cardio" | "bodyweight" | "functional" | "kettlebell" | "barbell-dumbbell" | "stretching"
+  ) {
+    setEquipmentFilters((prev) => (prev.includes(value) ? prev.filter((x) => x !== value) : [...prev, value]));
   }
 
   function openCatalogByMuscleGroup(groupId: string) {
@@ -218,7 +252,7 @@ export default function App() {
 
   function openExerciseBySlug(slug: string) {
     if (!slug) return;
-    const exercise = exerciseList.find((item) => item.id === slug);
+    const exercise = exerciseList.find((item) => item.slug === slug || item.id === slug);
     if (!exercise) return;
     const linkedBodyPartId =
       bodyParts.find((part) =>
@@ -239,44 +273,22 @@ export default function App() {
 
   function renderPage() {
     if (currentPage === "home") {
-      return (
-        <HomePage
-          searchTerm={searchTerm}
-          onSearchChange={setSearchTerm}
-          onSearch={performSearch}
-          suggestions={searchSuggestions}
-          isSuggesting={isSuggesting}
-          onSelectSuggestion={handleSelectSuggestion}
-          onMuscleSelect={selectMuscleGroup}
-        />
-      );
+      return <HomePage onMuscleSelect={selectMuscleGroup} onNavigate={setCurrentPage} />;
     }
 
     if (currentPage === "catalog") {
       return (
         <CatalogPage
-          searchTerm={searchTerm}
-          onSearchChange={(value) => {
-            setSearchTerm(value);
-            if (!value.trim()) {
-              setCatalogDbResults(null);
-              setCatalogSearchError("");
-            }
-          }}
-          onSearch={() => void searchCatalogInDb()}
-          suggestions={searchSuggestions}
-          isSuggesting={isSuggesting}
-          onSelectSuggestion={handleSelectSuggestion}
-          isSearching={isCatalogSearching}
-          searchError={catalogSearchError}
           bodyParts={bodyParts}
           activeBodyPart={activeBodyPart}
           onBodyPartSelect={selectBodyPart}
           muscleGroups={visibleMuscleGroups}
           activeMuscleGroup={activeMuscleGroup}
           onMuscleGroupSelect={selectMuscleGroup}
+          equipmentFilters={equipmentFilters}
+          onEquipmentFilterToggle={toggleEquipmentFilter}
           onResetFilters={resetCatalogFilters}
-          isResetDisabled={!activeBodyPart && !activeMuscleGroup}
+          isResetDisabled={!activeBodyPart && !activeMuscleGroup && equipmentFilters.length === 0}
           exercises={filteredExercises}
           onOpenExercise={openExercise}
         />
@@ -296,7 +308,17 @@ export default function App() {
 
   return (
     <>
-      <Header currentPage={currentPage} onNavigate={setCurrentPage} onOpenProfile={() => setIsProfileOpen(true)} />
+      <Header
+        currentPage={currentPage}
+        onNavigate={setCurrentPage}
+        onOpenProfile={() => setIsProfileOpen(true)}
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        onSearch={performSearch}
+        suggestions={searchSuggestions}
+        isSuggesting={isSuggesting}
+        onSelectSuggestion={handleSelectSuggestion}
+      />
       <main>
         <div className="container">{renderPage()}</div>
       </main>
