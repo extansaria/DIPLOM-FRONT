@@ -379,7 +379,9 @@ export function MuscleMap({ onMuscleSelect }: MuscleMapProps) {
 
   return (
     <section className="muscle-board">
-      <h2 style={{ marginTop: 0 }}>Интерактивная анатомическая схема</h2>
+      <h2 className="section-title" style={{ marginTop: 0 }}>
+        Интерактивная анатомическая схема
+      </h2>
       <div className="muscle-views">
         <div>
           <p className="muted">Вид спереди</p>

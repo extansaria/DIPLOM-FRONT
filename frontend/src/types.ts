@@ -2,6 +2,7 @@ export type PageId = "home" | "catalog" | "blog" | "reviews" | "workout";
 
 export interface Exercise {
   id: string;
+  slug?: string;
   name: string;
   muscleGroup: string;
   muscleGroupLabel?: string;
@@ -12,6 +13,8 @@ export interface Exercise {
 }
 
 export interface Profile {
+  id: string | null;
+  nickname: string | null;
   name: string;
   email: string;
   authenticated: boolean;

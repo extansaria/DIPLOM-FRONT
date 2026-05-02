@@ -60,7 +60,7 @@ export function CatalogPage({
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           <div className="card">
             <h2 style={{ marginTop: 0 }}>Части тела</h2>
-            <div className="tags">
+            <div className="tags filter-tags">
               {bodyParts.map((part) => (
                 <button
                   key={part.id}
@@ -145,7 +145,7 @@ export function CatalogPage({
         </div>
         <div className="card catalog-muscle-groups-card" style={{ height: "100%" }}>
           <h2 style={{ marginTop: 0 }}>Группы мышц</h2>
-          <div className="tags catalog-muscle-groups-tags">
+          <div className="tags filter-tags catalog-muscle-groups-tags">
             {muscleGroups.map((group) => (
               <button
                 key={group.id}

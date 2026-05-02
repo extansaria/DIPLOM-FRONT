@@ -12,15 +12,62 @@ import { bodyParts, blogPosts, exercises, muscleGroups, muscleGroupsByBodyPart, 
 import { daysOfWeek } from "./utils/helpers.js";
 import type { Exercise, PageId, Profile, SearchSuggestionItem, WorkoutsByDay } from "./types";
 
-const initialProfile: Profile = {
-  name: "Даниил Сергеев",
-  email: "student@gydex.local",
-  authenticated: false
-};
+const AUTH_STORAGE_KEY = "gydex-auth-token-v1";
 const PAGE_STORAGE_KEY = "gydex-current-page-v1";
 const ALLOWED_PAGES = new Set<PageId>(["home", "catalog", "blog", "reviews", "workout"]);
 const API_BASE_URL =
   (typeof window !== "undefined" && (window as Window & { __AI_API_URL__?: string }).__AI_API_URL__) || "http://localhost:3001";
+
+const guestProfile: Profile = {
+  id: null,
+  nickname: null,
+  name: "Гость",
+  email: "",
+  authenticated: false
+};
+
+function emptyWorkouts(): WorkoutsByDay {
+  return daysOfWeek.reduce<WorkoutsByDay>((acc, day) => ({ ...acc, [day]: [] }), {});
+}
+
+function slugsFromFavorites(favorites: Exercise[]) {
+  return favorites.map((e) => e.slug || e.id);
+}
+
+function slugsFromWorkouts(workouts: WorkoutsByDay) {
+  const out: Record<string, string[]> = {};
+  for (const day of daysOfWeek) {
+    out[day] = (workouts[day] || []).map((e) => e.slug || e.id);
+  }
+  return out;
+}
+
+function findExerciseBySlug(list: Exercise[], slug: string) {
+  return list.find((e) => e.id === slug || e.slug === slug) || null;
+}
+
+function exercisesFromSlugs(slugs: string[], list: Exercise[]): Exercise[] {
+  const seen = new Set<string>();
+  const result: Exercise[] = [];
+  for (const s of slugs) {
+    const ex = findExerciseBySlug(list, s);
+    if (ex && !seen.has(ex.id)) {
+      seen.add(ex.id);
+      result.push(ex);
+    }
+  }
+  return result;
+}
+
+function workoutsFromApi(workouts: Record<string, unknown> | undefined, list: Exercise[]): WorkoutsByDay {
+  const base = emptyWorkouts();
+  if (!workouts || typeof workouts !== "object") return base;
+  for (const day of daysOfWeek) {
+    const slugs = workouts[day];
+    base[day] = Array.isArray(slugs) ? exercisesFromSlugs(slugs.map(String), list) : [];
+  }
+  return base;
+}
 
 function withLabels(items: Exercise[]): Exercise[] {
   return items.map((exercise) => {
@@ -56,11 +103,17 @@ export default function App() {
   const [searchSuggestions, setSearchSuggestions] = useState<SearchSuggestionItem[]>([]);
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [profile, setProfile] = useState<Profile>(initialProfile);
+  const [authToken, setAuthToken] = useState<string | null>(() => {
+    try {
+      return window.localStorage.getItem(AUTH_STORAGE_KEY);
+    } catch {
+      return null;
+    }
+  });
+  const [libraryHydrated, setLibraryHydrated] = useState(false);
+  const [profile, setProfile] = useState<Profile>(guestProfile);
   const [favorites, setFavorites] = useState<Exercise[]>([]);
-  const [workouts, setWorkouts] = useState<WorkoutsByDay>(() =>
-    daysOfWeek.reduce<WorkoutsByDay>((acc, day) => ({ ...acc, [day]: [] }), {})
-  );
+  const [workouts, setWorkouts] = useState<WorkoutsByDay>(() => emptyWorkouts());
 
   useEffect(() => {
     try {
@@ -77,6 +130,83 @@ export default function App() {
   }, [activeBodyPart]);
 
   const exerciseList = useMemo(() => withLabels(exercises as Exercise[]), []);
+
+  useEffect(() => {
+    if (!authToken) {
+      setLibraryHydrated(false);
+      setProfile(guestProfile);
+      setFavorites([]);
+      setWorkouts(emptyWorkouts());
+      return;
+    }
+    setLibraryHydrated(false);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const headers = { Authorization: `Bearer ${authToken}` };
+        const meRes = await fetch(`${API_BASE_URL}/api/auth/me`, { headers });
+        if (!meRes.ok) throw new Error("me");
+        const me = (await meRes.json()) as { id: string; nickname: string; email?: string; displayName?: string };
+        if (cancelled) return;
+        setProfile({
+          id: me.id,
+          nickname: me.nickname,
+          name: me.displayName || me.nickname,
+          email: me.email || "",
+          authenticated: true
+        });
+        const libRes = await fetch(`${API_BASE_URL}/api/user/library`, { headers });
+        const lib = (await libRes.json()) as { favorites?: string[]; workouts?: Record<string, unknown> };
+        if (cancelled) return;
+        if (libRes.ok) {
+          setFavorites(exercisesFromSlugs(Array.isArray(lib.favorites) ? lib.favorites : [], exerciseList));
+          setWorkouts(workoutsFromApi(lib.workouts, exerciseList));
+        } else {
+          setFavorites([]);
+          setWorkouts(emptyWorkouts());
+        }
+        setLibraryHydrated(true);
+      } catch {
+        if (cancelled) return;
+        try {
+          window.localStorage.removeItem(AUTH_STORAGE_KEY);
+        } catch {
+          /* ignore */
+        }
+        setAuthToken(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken, exerciseList]);
+
+  useEffect(() => {
+    if (!authToken || !libraryHydrated) return;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/user/library`, {
+            method: "PUT",
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              favorites: slugsFromFavorites(favorites),
+              workouts: slugsFromWorkouts(workouts)
+            })
+          });
+          if (!res.ok) {
+            /* silent; user keeps local state */
+          }
+        } catch {
+          /* ignore network errors */
+        }
+      })();
+    }, 750);
+    return () => window.clearTimeout(timer);
+  }, [favorites, workouts, authToken, libraryHydrated]);
 
   const filteredExercises = useMemo(() => {
     const source = Array.isArray(catalogDbResults) ? catalogDbResults : exerciseList;
@@ -189,12 +319,164 @@ export default function App() {
     setFavorites((prev) => (prev.some((item) => item.id === exercise.id) ? prev : [exercise, ...prev]));
   }
 
-  function addToWorkout(exercise: Exercise, targetDay: string) {
-    if (!targetDay) return;
+  function removeFromFavorite(exercise: Exercise) {
+    setFavorites((prev) => prev.filter((item) => item.id !== exercise.id));
+  }
+
+  async function handleAuthGoogle(credential: string): Promise<string | null> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/google`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential })
+      });
+      const data = (await res.json()) as { error?: string; token?: string };
+      if (!res.ok) return data.error || "Не удалось войти через Google.";
+      if (!data.token) return "Нет токена в ответе.";
+      try {
+        window.localStorage.setItem(AUTH_STORAGE_KEY, data.token);
+      } catch {
+        /* ignore */
+      }
+      setAuthToken(data.token);
+      return null;
+    } catch {
+      return "Сеть недоступна.";
+    }
+  }
+
+  async function handleAuthLogin(login: string, password: string): Promise<string | null> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ login: login.trim(), password })
+      });
+      const data = (await res.json()) as { error?: string; token?: string };
+      if (!res.ok) return data.error || "Не удалось войти.";
+      if (!data.token) return "Нет токена в ответе.";
+      try {
+        window.localStorage.setItem(AUTH_STORAGE_KEY, data.token);
+      } catch {
+        /* ignore */
+      }
+      setAuthToken(data.token);
+      return null;
+    } catch {
+      return "Сеть недоступна.";
+    }
+  }
+
+  async function handleAuthCheckLoginEmail(email: string): Promise<string | null> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/login/check-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() })
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) return data.error || "Не удалось проверить email.";
+      return null;
+    } catch {
+      return "Сеть недоступна.";
+    }
+  }
+
+  async function handleAuthRegister(payload: { nickname: string; password: string; email: string }): Promise<string | null> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, displayName: "" })
+      });
+      const data = (await res.json()) as { error?: string; token?: string };
+      if (!res.ok) return data.error || "Не удалось зарегистрироваться.";
+      if (!data.token) return "Нет токена в ответе.";
+      try {
+        window.localStorage.setItem(AUTH_STORAGE_KEY, data.token);
+      } catch {
+        /* ignore */
+      }
+      setAuthToken(data.token);
+      return null;
+    } catch {
+      return "Сеть недоступна.";
+    }
+  }
+
+  function handleAuthLogout() {
+    try {
+      window.localStorage.removeItem(AUTH_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    setAuthToken(null);
+    setIsProfileOpen(false);
+  }
+
+  async function handleAuthForgotPassword(nicknameOrEmail: string): Promise<{ error: string | null; message?: string; resetToken?: string }> {
+    try {
+      const v = nicknameOrEmail.trim();
+      const res = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: v, nickname: v })
+      });
+      const data = (await res.json()) as { error?: string; message?: string; resetToken?: string };
+      if (!res.ok) return { error: data.error || "Не удалось отправить запрос." };
+      return { error: null, message: data.message, resetToken: data.resetToken };
+    } catch {
+      return { error: "Сеть недоступна." };
+    }
+  }
+
+  async function handleAuthResetPassword(token: string, password: string): Promise<string | null> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, password })
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) return data.error || "Не удалось сменить пароль.";
+      return null;
+    } catch {
+      return "Сеть недоступна.";
+    }
+  }
+
+  function addToWorkout(exercise: Exercise, targetDay: string): boolean {
+    if (!targetDay) return false;
+    const alreadyExists = (workouts[targetDay] || []).some((item) => item.id === exercise.id);
+    if (alreadyExists) return false;
     setWorkouts((prev) => ({
       ...prev,
       [targetDay]: [...(prev[targetDay] || []), exercise]
     }));
+    return true;
+  }
+
+  function removeWorkoutExercise(day: string, exerciseId: string) {
+    setWorkouts((prev) => ({
+      ...prev,
+      [day]: (prev[day] || []).filter((item) => item.id !== exerciseId)
+    }));
+  }
+
+  function moveWorkoutExercise(fromDay: string, toDay: string, exerciseId: string): boolean {
+    if (!fromDay || !toDay || fromDay === toDay) return false;
+    const source = workouts[fromDay] || [];
+    const moving = source.find((item) => item.id === exerciseId);
+    if (!moving) return false;
+    const existsInTarget = (workouts[toDay] || []).some((item) => item.id === exerciseId);
+    if (existsInTarget) return false;
+
+    setWorkouts((prev) => ({
+      ...prev,
+      [fromDay]: (prev[fromDay] || []).filter((item) => item.id !== exerciseId),
+      [toDay]: [...(prev[toDay] || []), moving]
+    }));
+    return true;
   }
 
   function performSearch() {
@@ -303,7 +585,14 @@ export default function App() {
       return <ReviewsPage initialReviews={reviewsMock} />;
     }
 
-    return <WorkoutPage workouts={workouts} />;
+    return (
+      <WorkoutPage
+        workouts={workouts}
+        onOpenExercise={openExercise}
+        onRemoveExercise={removeWorkoutExercise}
+        onMoveExercise={moveWorkoutExercise}
+      />
+    );
   }
 
   return (
@@ -333,8 +622,16 @@ export default function App() {
           profile={profile}
           favorites={favorites}
           workouts={workouts}
+          apiBaseUrl={API_BASE_URL}
           onClose={() => setIsProfileOpen(false)}
-          onToggleAuth={() => setProfile((prev) => ({ ...prev, authenticated: !prev.authenticated }))}
+          onLogout={handleAuthLogout}
+          onLogin={handleAuthLogin}
+          onCheckLoginEmail={handleAuthCheckLoginEmail}
+          onRegister={handleAuthRegister}
+          onGoogleSignIn={handleAuthGoogle}
+          onRequestPasswordReset={handleAuthForgotPassword}
+          onResetPassword={handleAuthResetPassword}
+          onRemoveFavorite={removeFromFavorite}
         />
       )}
       <AiSupportWidget onOpenCatalogByMuscleGroup={openCatalogByMuscleGroup} onOpenExerciseBySlug={openExerciseBySlug} />

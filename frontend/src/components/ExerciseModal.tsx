@@ -7,7 +7,7 @@ type ExerciseModalProps = {
   exercise: Exercise | null;
   onClose: () => void;
   onAddFavorite: (exercise: Exercise) => void;
-  onAddToWorkout: (exercise: Exercise, day: string) => void;
+  onAddToWorkout: (exercise: Exercise, day: string) => boolean;
 };
 
 export function ExerciseModal({ exercise, onClose, onAddFavorite, onAddToWorkout }: ExerciseModalProps) {
@@ -41,9 +41,9 @@ export function ExerciseModal({ exercise, onClose, onAddFavorite, onAddToWorkout
   };
 
   function handlePickDay(day: string) {
-    onAddToWorkout(exercise, day);
+    const added = onAddToWorkout(exercise, day);
     setIsDayPickerOpen(false);
-    setAddedDayLabel(dayToCase[day] || day.toLowerCase());
+    setAddedDayLabel(added ? dayToCase[day] || day.toLowerCase() : `duplicate:${dayToCase[day] || day.toLowerCase()}`);
     if (resetTimerRef.current !== null) {
       window.clearTimeout(resetTimerRef.current);
     }
@@ -89,7 +89,11 @@ export function ExerciseModal({ exercise, onClose, onAddFavorite, onAddToWorkout
             style={addedDayLabel ? { opacity: 0.62, cursor: "not-allowed" } : {}}
           >
             {WorkoutIcon({ className: "ui-icon", size: 14 })}
-            {addedDayLabel ? `Добавлено в ${addedDayLabel}` : "Добавить в мою тренировку"}
+            {addedDayLabel
+              ? addedDayLabel.startsWith("duplicate:")
+                ? `Уже есть в ${addedDayLabel.replace("duplicate:", "")}`
+                : `Добавлено в ${addedDayLabel}`
+              : "Добавить в мою тренировку"}
           </button>
         </div>
         {isDayPickerOpen ? (
