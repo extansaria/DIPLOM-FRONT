@@ -1,4 +1,4 @@
-export type PageId = "home" | "catalog" | "blog" | "reviews" | "workout";
+export type PageId = "home" | "catalog" | "blog" | "workout";
 
 export interface Exercise {
   id: string;
@@ -7,9 +7,14 @@ export interface Exercise {
   muscleGroup: string;
   muscleGroupLabel?: string;
   description: string;
+  cardDescription?: string;
+  detailedDescription?: string;
   technique: string;
+  techniqueSteps?: string[];
   mistakes: string;
   equipment: string;
+  videoUrl?: string;
+  posterUrl?: string;
 }
 
 export interface Profile {
@@ -38,9 +43,23 @@ export interface Review {
   id: string;
   author: string;
   text: string;
+  /** Оценка от 1 до 5 */
+  rating?: number;
 }
 
 export type WorkoutsByDay = Record<string, Exercise[]>;
+
+export interface AiProgramQuestionnaire {
+  sex: "male" | "female";
+  age: number;
+  heightCm: number;
+  weightKg: number;
+  trainingPlace: "gym" | "home";
+  goal: string;
+  level: "beginner" | "intermediate" | "advanced";
+  daysPerWeek: number;
+  limitations?: string;
+}
 
 export interface AiMatch {
   id: string;

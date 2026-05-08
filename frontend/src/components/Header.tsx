@@ -1,14 +1,13 @@
-import { BlogIcon, HomeIcon, LibraryIcon, ReviewsIcon, UserIcon, WorkoutIcon } from "./icons";
+import { UserIcon } from "./icons";
 import { SearchBar } from "./SearchBar";
 import type { PageId } from "../types";
 import type { SearchSuggestionItem } from "../types";
 
-const navItems: { key: PageId; label: string; icon: typeof HomeIcon }[] = [
-  { key: "home", label: "Главная", icon: HomeIcon },
-  { key: "catalog", label: "Каталог упражнений", icon: LibraryIcon },
-  { key: "blog", label: "Блог", icon: BlogIcon },
-  { key: "reviews", label: "Отзывы", icon: ReviewsIcon },
-  { key: "workout", label: "Моя тренировка", icon: WorkoutIcon }
+const navItems: { key: PageId; label: string }[] = [
+  { key: "home", label: "Главная" },
+  { key: "catalog", label: "Каталог" },
+  { key: "blog", label: "Блог" },
+  { key: "workout", label: "Моя тренировка" }
 ];
 
 type HeaderProps = {
@@ -49,7 +48,6 @@ export function Header({
                 className={item.key === currentPage ? "active" : ""}
                 onClick={() => onNavigate(item.key)}
               >
-                {item.icon({ className: "ui-icon nav-icon", size: 14 })}
                 {item.label}
               </button>
             ))}
@@ -68,7 +66,7 @@ export function Header({
             />
           </div>
           <button type="button" className="icon-btn" title="Личный кабинет" onClick={onOpenProfile}>
-            {UserIcon({ className: "ui-icon", size: 18 })}
+            {UserIcon({ className: "ui-icon", size: 21 })}
           </button>
         </div>
       </div>

@@ -8,15 +8,15 @@ import { CatalogPage } from "./pages/CatalogPage";
 import { BlogPage } from "./pages/BlogPage";
 import { ReviewsPage } from "./pages/ReviewsPage";
 import { WorkoutPage } from "./pages/WorkoutPage";
-import { bodyParts, blogPosts, exercises, muscleGroups, muscleGroupsByBodyPart, reviewsMock } from "./data/mockData.js";
+import { bodyParts, blogPosts, exercises, muscleGroups, muscleGroupsByBodyPart } from "./data/mockData.js";
 import { daysOfWeek } from "./utils/helpers.js";
-import type { Exercise, PageId, Profile, SearchSuggestionItem, WorkoutsByDay } from "./types";
+import type { AiMatch, AiProgramQuestionnaire, Exercise, PageId, Profile, SearchSuggestionItem, WorkoutsByDay } from "./types";
+import { getApiBaseUrl } from "./apiBaseUrl";
 
 const AUTH_STORAGE_KEY = "gydex-auth-token-v1";
 const PAGE_STORAGE_KEY = "gydex-current-page-v1";
-const ALLOWED_PAGES = new Set<PageId>(["home", "catalog", "blog", "reviews", "workout"]);
-const API_BASE_URL =
-  (typeof window !== "undefined" && (window as Window & { __AI_API_URL__?: string }).__AI_API_URL__) || "http://localhost:3001";
+const ALLOWED_PAGES = new Set<PageId>(["home", "catalog", "blog", "workout"]);
+const API_BASE_URL = getApiBaseUrl();
 
 const guestProfile: Profile = {
   id: null,
@@ -69,6 +69,66 @@ function workoutsFromApi(workouts: Record<string, unknown> | undefined, list: Ex
   return base;
 }
 
+function normalizeText(value: string) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function compactText(value: string) {
+  return normalizeText(value).replace(/[\s-]+/g, "");
+}
+
+function findMatchByTitle(title: string, matches: AiMatch[]): AiMatch | null {
+  const normalizedTitle = normalizeText(title.replace(/^\d+[.)]\s*/, ""));
+  const compactTitle = compactText(title);
+  if (!normalizedTitle) return null;
+  return (
+    matches.find((m) => {
+      const dbTitle = normalizeText(m.title);
+      const dbCompact = compactText(m.title);
+      return (
+        dbTitle === normalizedTitle ||
+        dbTitle.includes(normalizedTitle) ||
+        normalizedTitle.includes(dbTitle) ||
+        dbCompact === compactTitle ||
+        dbCompact.includes(compactTitle) ||
+        compactTitle.includes(dbCompact)
+      );
+    }) || null
+  );
+}
+
+function parseWeeklyPlanTitles(answer: string): Record<string, string[]> {
+  const byDay = Object.fromEntries(daysOfWeek.map((d) => [d, [] as string[]])) as Record<string, string[]>;
+  const lines = String(answer || "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  let currentDay: string | null = null;
+  for (const line of lines) {
+    const day = daysOfWeek.find((d) => new RegExp(`^${d}\\s*:?$`, "i").test(line));
+    if (day) {
+      currentDay = day;
+      continue;
+    }
+    if (!currentDay) continue;
+    if (/^отдых\b/i.test(line)) {
+      byDay[currentDay] = [];
+      continue;
+    }
+    const numbered = line.match(/^(?:[-*]\s*|\d+[.)]\s*)(.+)$/);
+    const rawTitle = (numbered ? numbered[1] : line).replace(/\s*[—-]\s*почему.+$/i, "").trim();
+    if (rawTitle) byDay[currentDay].push(rawTitle);
+  }
+  return byDay;
+}
+
 function withLabels(items: Exercise[]): Exercise[] {
   return items.map((exercise) => {
     const group = muscleGroups.find((item) => item.id === exercise.muscleGroup);
@@ -91,7 +151,7 @@ export default function App() {
     return "home";
   });
   const [activeBodyPart, setActiveBodyPart] = useState<string | null>(null);
-  const [activeMuscleGroup, setActiveMuscleGroup] = useState<string | null>(null);
+  const [activeMuscleGroups, setActiveMuscleGroups] = useState<string[]>([]);
   const [equipmentFilters, setEquipmentFilters] = useState<
     Array<"machine" | "free-weight" | "cardio" | "bodyweight" | "functional" | "kettlebell" | "barbell-dumbbell" | "stretching">
   >([]);
@@ -122,12 +182,6 @@ export default function App() {
       /* ignore storage write errors */
     }
   }, [currentPage]);
-
-  const visibleMuscleGroups = useMemo(() => {
-    if (!activeBodyPart) return muscleGroups;
-    const ids = muscleGroupsByBodyPart[activeBodyPart as keyof typeof muscleGroupsByBodyPart] || [];
-    return muscleGroups.filter((group) => ids.includes(group.id));
-  }, [activeBodyPart]);
 
   const exerciseList = useMemo(() => withLabels(exercises as Exercise[]), []);
 
@@ -210,16 +264,12 @@ export default function App() {
 
   const filteredExercises = useMemo(() => {
     const source = Array.isArray(catalogDbResults) ? catalogDbResults : exerciseList;
-    const byBodyPart = activeBodyPart
-      ? source.filter((item) =>
-          (muscleGroupsByBodyPart[activeBodyPart as keyof typeof muscleGroupsByBodyPart] || []).includes(item.muscleGroup)
-        )
-      : source;
-    const bySelectedGroup = activeMuscleGroup ? byBodyPart.filter((item) => item.muscleGroup === activeMuscleGroup) : byBodyPart;
+    const bySelectedGroups =
+      activeMuscleGroups.length > 0 ? source.filter((item) => activeMuscleGroups.includes(item.muscleGroup)) : source;
     const byEquipment =
       equipmentFilters.length === 0
-        ? bySelectedGroup
-        : bySelectedGroup.filter((item) => {
+        ? bySelectedGroups
+        : bySelectedGroups.filter((item) => {
             const eq = String(item.equipment || "")
               .toLowerCase()
               .replace(/ё/g, "е");
@@ -242,36 +292,26 @@ export default function App() {
             return hitMachine || hitFreeWeight || hitCardio || hitBodyweight || hitFunctional || hitKettlebell || hitBarbellDumbbell || hitStretching;
           });
     return byEquipment;
-  }, [exerciseList, catalogDbResults, activeBodyPart, activeMuscleGroup, equipmentFilters, searchTerm]);
+  }, [exerciseList, catalogDbResults, activeMuscleGroups, equipmentFilters, searchTerm]);
 
   async function searchCatalogInDb() {
     const query = searchTerm.trim();
-    if (!query) {
+    const normalizedQuery = normalizeText(query);
+    if (!normalizedQuery) {
       setCatalogDbResults(null);
       setCatalogSearchError("");
+      return;
+    }
+    if (normalizedQuery.length < 2) {
+      setCatalogDbResults([]);
+      setCatalogSearchError("Введите минимум 2 буквы для поиска.");
       return;
     }
     setIsCatalogSearching(true);
     setCatalogSearchError("");
     try {
-      const res = await fetch(`${API_BASE_URL}/api/exercises/search?q=${encodeURIComponent(query)}`);
-      const data: { error?: string; items?: unknown[] } = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Ошибка поиска по базе");
-      const rows = Array.isArray(data.items) ? data.items : [];
-      const mapped: Exercise[] = rows.map((row: unknown) => {
-        const r = row as Record<string, string | undefined>;
-        return {
-          id: r.slug || r.id || "",
-          name: r.title || "",
-          muscleGroup: r.muscleGroupSlug || "",
-          muscleGroupLabel: r.muscleGroup,
-          description: r.shortDescription || "",
-          technique: r.technique || "",
-          mistakes: r.commonMistakes || "",
-          equipment: r.equipment || ""
-        };
-      });
-      setCatalogDbResults(mapped);
+      const localMatches = exerciseList.filter((item) => normalizeText(item.name).includes(normalizedQuery));
+      setCatalogDbResults(localMatches);
     } catch (error) {
       setCatalogSearchError(String(error instanceof Error ? error.message : error));
       setCatalogDbResults([]);
@@ -282,27 +322,28 @@ export default function App() {
 
   useEffect(() => {
     const query = searchTerm.trim();
-    if (!query) {
+    const normalizedQuery = normalizeText(query);
+    if (!normalizedQuery || normalizedQuery.length < 2) {
       setSearchSuggestions([]);
       setIsSuggesting(false);
       return;
     }
     let cancelled = false;
     const timer = setTimeout(() => {
-      void (async () => {
-        setIsSuggesting(true);
-        try {
-          const res = await fetch(`${API_BASE_URL}/api/exercises/search?q=${encodeURIComponent(query)}`);
-          const data: { error?: string; items?: SearchSuggestionItem[] } = await res.json();
-          if (!res.ok) throw new Error(data?.error || "Ошибка подсказок");
-          if (cancelled) return;
-          setSearchSuggestions((Array.isArray(data.items) ? data.items : []).slice(0, 6));
-        } catch {
-          if (!cancelled) setSearchSuggestions([]);
-        } finally {
-          if (!cancelled) setIsSuggesting(false);
-        }
-      })();
+      setIsSuggesting(true);
+      const localSuggestions: SearchSuggestionItem[] = exerciseList
+        .filter((item) => normalizeText(item.name).includes(normalizedQuery))
+        .slice(0, 6)
+        .map((item) => ({
+          id: item.id,
+          slug: item.slug || item.id,
+          title: item.name,
+          muscleGroup: item.muscleGroupLabel || item.muscleGroup
+        }));
+      if (!cancelled) {
+        setSearchSuggestions(localSuggestions);
+        setIsSuggesting(false);
+      }
     }, 250);
 
     return () => {
@@ -479,6 +520,56 @@ export default function App() {
     return true;
   }
 
+  async function generateAiProgram(payload: AiProgramQuestionnaire): Promise<string | null> {
+    const cleanDays = Math.min(7, Math.max(1, Number(payload.daysPerWeek) || 3));
+    const safePayload = { ...payload, daysPerWeek: cleanDays };
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/ai/program`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(safePayload)
+      });
+      const data: { answer?: string; error?: string; matches?: AiMatch[] } = await res.json();
+      if (!res.ok) return data?.error || "AI не смог собрать программу.";
+      const answer = String(data.answer || "");
+      const matches = Array.isArray(data.matches) ? data.matches : [];
+      const byDayTitles = parseWeeklyPlanTitles(answer);
+
+      const next: WorkoutsByDay = emptyWorkouts();
+      for (const day of daysOfWeek) {
+        const titles = byDayTitles[day] || [];
+        const seen = new Set<string>();
+        const exercisesForDay: Exercise[] = [];
+        for (const title of titles) {
+          const matched = findMatchByTitle(title, matches);
+          const exByMatch = matched ? findExerciseBySlug(exerciseList, matched.slug) : null;
+          const exByTitle =
+            exByMatch ||
+            exerciseList.find((ex) => {
+              const exName = normalizeText(ex.name);
+              const t = normalizeText(title);
+              return exName === t || exName.includes(t) || t.includes(exName);
+            }) ||
+            null;
+          if (exByTitle && !seen.has(exByTitle.id)) {
+            seen.add(exByTitle.id);
+            exercisesForDay.push(exByTitle);
+          }
+        }
+        next[day] = exercisesForDay;
+      }
+
+      const totalAdded = daysOfWeek.reduce((acc, day) => acc + next[day].length, 0);
+      if (totalAdded === 0) return "AI ответил, но не удалось сопоставить упражнения с базой.";
+      setWorkouts(next);
+      setCurrentPage("workout");
+      return null;
+    } catch {
+      return "Сеть недоступна при генерации плана.";
+    }
+  }
+
   function performSearch() {
     setCurrentPage("catalog");
     setSearchSuggestions([]);
@@ -487,13 +578,13 @@ export default function App() {
 
   function selectBodyPart(bodyPartId: string) {
     setActiveBodyPart(bodyPartId);
-    setActiveMuscleGroup(null);
+    setActiveMuscleGroups([]);
   }
 
   const selectMuscleGroup = useCallback((groupId: string) => {
     if (muscleGroupsByBodyPart[groupId as keyof typeof muscleGroupsByBodyPart]) {
       setActiveBodyPart(groupId);
-      setActiveMuscleGroup(muscleGroupsByBodyPart[groupId as keyof typeof muscleGroupsByBodyPart]?.[0] || null);
+      setActiveMuscleGroups(muscleGroupsByBodyPart[groupId as keyof typeof muscleGroupsByBodyPart] || []);
       setCurrentPage("catalog");
       return;
     }
@@ -503,16 +594,14 @@ export default function App() {
     )?.id;
     if (linkedBodyPartId) {
       setActiveBodyPart(linkedBodyPartId);
-      setActiveMuscleGroup(groupId);
-    } else {
-      setActiveMuscleGroup(groupId);
     }
+    setActiveMuscleGroups((prev) => (prev.includes(groupId) ? prev.filter((id) => id !== groupId) : [...prev, groupId]));
     setCurrentPage("catalog");
   }, []);
 
   function resetCatalogFilters() {
     setActiveBodyPart(null);
-    setActiveMuscleGroup(null);
+    setActiveMuscleGroups([]);
     setEquipmentFilters([]);
     setCatalogDbResults(null);
     setCatalogSearchError("");
@@ -541,8 +630,14 @@ export default function App() {
         (muscleGroupsByBodyPart[part.id as keyof typeof muscleGroupsByBodyPart] || []).includes(exercise.muscleGroup)
       )?.id || null;
     setActiveBodyPart(linkedBodyPartId);
-    setActiveMuscleGroup(exercise.muscleGroup);
+    setActiveMuscleGroups([exercise.muscleGroup]);
     setCurrentPage("catalog");
+    setSelectedExercise(exercise);
+  }
+
+  function openFavoriteFromProfile(exercise: Exercise) {
+    if (!exercise) return;
+    setIsProfileOpen(false);
     setSelectedExercise(exercise);
   }
 
@@ -555,22 +650,26 @@ export default function App() {
 
   function renderPage() {
     if (currentPage === "home") {
-      return <HomePage onMuscleSelect={selectMuscleGroup} onNavigate={setCurrentPage} />;
+      return (
+        <HomePage
+          onMuscleSelect={selectMuscleGroup}
+          onNavigate={setCurrentPage}
+          exercises={exerciseList}
+          onOpenExercise={openExercise}
+        />
+      );
     }
 
     if (currentPage === "catalog") {
       return (
         <CatalogPage
-          bodyParts={bodyParts}
-          activeBodyPart={activeBodyPart}
-          onBodyPartSelect={selectBodyPart}
-          muscleGroups={visibleMuscleGroups}
-          activeMuscleGroup={activeMuscleGroup}
+          muscleGroups={muscleGroups}
+          activeMuscleGroups={activeMuscleGroups}
           onMuscleGroupSelect={selectMuscleGroup}
           equipmentFilters={equipmentFilters}
           onEquipmentFilterToggle={toggleEquipmentFilter}
           onResetFilters={resetCatalogFilters}
-          isResetDisabled={!activeBodyPart && !activeMuscleGroup && equipmentFilters.length === 0}
+          isResetDisabled={!activeBodyPart && activeMuscleGroups.length === 0 && equipmentFilters.length === 0}
           exercises={filteredExercises}
           onOpenExercise={openExercise}
         />
@@ -581,16 +680,15 @@ export default function App() {
       return <BlogPage posts={blogPosts} />;
     }
 
-    if (currentPage === "reviews") {
-      return <ReviewsPage initialReviews={reviewsMock} />;
-    }
-
     return (
       <WorkoutPage
         workouts={workouts}
         onOpenExercise={openExercise}
         onRemoveExercise={removeWorkoutExercise}
         onMoveExercise={moveWorkoutExercise}
+        onGenerateAiProgram={generateAiProgram}
+        isAuthenticated={profile.authenticated}
+        onOpenProfile={() => setIsProfileOpen(true)}
       />
     );
   }
@@ -632,6 +730,7 @@ export default function App() {
           onRequestPasswordReset={handleAuthForgotPassword}
           onResetPassword={handleAuthResetPassword}
           onRemoveFavorite={removeFromFavorite}
+          onOpenFavorite={openFavoriteFromProfile}
         />
       )}
       <AiSupportWidget onOpenCatalogByMuscleGroup={openCatalogByMuscleGroup} onOpenExerciseBySlug={openExerciseBySlug} />

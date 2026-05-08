@@ -75,7 +75,7 @@ export function SearchBar({
                   onBlur={() => setIsInlineFocused(false)}
                   onChange={(e) => onChange(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && onSearch?.()}
-                  placeholder="Найти упражнение..."
+                  placeholder=""
                 />
               </div>
             </div>
@@ -118,8 +118,7 @@ export function SearchBar({
   return (
     <div className="search-autocomplete-shell">
       <button type="button" className="search-header-trigger" onClick={openSearch}>
-        {SearchIcon({ className: "ui-icon search-input-icon", size: 15 })}
-        <span>Найти упражнение...</span>
+        {SearchIcon({ className: "ui-icon search-input-icon", size: 20 })}
       </button>
       {isOverlayVisible && (
         <button
@@ -154,7 +153,7 @@ export function SearchBar({
                       if (e.key === "Enter") onSearch?.();
                       if (e.key === "Escape") closeSearch();
                     }}
-                    placeholder="Найти упражнение..."
+                    placeholder=""
                   />
                 </div>
               </div>

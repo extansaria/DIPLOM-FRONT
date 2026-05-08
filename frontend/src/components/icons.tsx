@@ -40,6 +40,9 @@ export const SparkIcon = (opts?: IconOpts) => icon("M12 3 9.5 9.5 3 12l6.5 2.5L1
 export const SendIcon = (opts?: IconOpts) => icon("M22 2 11 13M22 2 15 22l-4-9-9-4z", opts);
 export const ResetIcon = (opts?: IconOpts) => icon("M3 12a9 9 0 1 0 3-6.7M3 3v5h5", opts);
 export const OpenCardIcon = (opts?: IconOpts) => icon("M14 3h7v7M10 14 21 3M19 13v8H3V5h8", opts);
+/** Стрелка в круге — акцентные CTA */
+export const CircleArrowRightIcon = (opts?: IconOpts) =>
+  icon("M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M8 12h8m0 0-3-3m3 3-3 3", opts);
 export const MachineIcon = (opts?: IconOpts) => icon("M4 19V9m0 10h16M10 9V5h4v4m-9 0h14m-8 10v-4m2 0h2", opts);
 export const DumbbellIcon = (opts?: IconOpts) => icon("M3 10v4m2-6v8m14-8v8m2-6v4M5 12h14", opts);
 export const CardioIcon = (opts?: IconOpts) => icon("M3 12h4l2-4 3 8 2-4h7", opts);

@@ -1,0 +1,168 @@
+@font-face {
+    font-family: 'Tactic Sans Extended';
+    src: url('TacticSansExd-Blk.eot');
+    src: local('Tactic Sans Extended Black'), local('TacticSansExd-Blk'),
+        url('TacticSansExd-Blk.eot?#iefix') format('embedded-opentype'),
+        url('TacticSansExd-Blk.woff2') format('woff2'),
+        url('TacticSansExd-Blk.woff') format('woff'),
+        url('TacticSansExd-Blk.ttf') format('truetype');
+    font-weight: 900;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Tactic Sans Extended';
+    src: url('TacticSansExd-BlkIt.eot');
+    src: local('Tactic Sans Extended Black Italic'), local('TacticSansExd-BlkIt'),
+        url('TacticSansExd-BlkIt.eot?#iefix') format('embedded-opentype'),
+        url('TacticSansExd-BlkIt.woff2') format('woff2'),
+        url('TacticSansExd-BlkIt.woff') format('woff'),
+        url('TacticSansExd-BlkIt.ttf') format('truetype');
+    font-weight: 900;
+    font-style: italic;
+}
+
+@font-face {
+    font-family: 'Tactic Sans Extended';
+    src: url('TacticSansExd-LgtIt.eot');
+    src: local('Tactic Sans Extended Light Italic'), local('TacticSansExd-LgtIt'),
+        url('TacticSansExd-LgtIt.eot?#iefix') format('embedded-opentype'),
+        url('TacticSansExd-LgtIt.woff2') format('woff2'),
+        url('TacticSansExd-LgtIt.woff') format('woff'),
+        url('TacticSansExd-LgtIt.ttf') format('truetype');
+    font-weight: 300;
+    font-style: italic;
+}
+
+@font-face {
+    font-family: 'Tactic Sans Extended';
+    src: url('TacticSansExd-ThnIt.eot');
+    src: local('Tactic Sans Extended Thin Italic'), local('TacticSansExd-ThnIt'),
+        url('TacticSansExd-ThnIt.eot?#iefix') format('embedded-opentype'),
+        url('TacticSansExd-ThnIt.woff2') format('woff2'),
+        url('TacticSansExd-ThnIt.woff') format('woff'),
+        url('TacticSansExd-ThnIt.ttf') format('truetype');
+    font-weight: 100;
+    font-style: italic;
+}
+
+@font-face {
+    font-family: 'Tactic Sans Extended';
+    src: url('TacticSansExd-Bld.eot');
+    src: local('Tactic Sans Extended Bold'), local('TacticSansExd-Bld'),
+        url('TacticSansExd-Bld.eot?#iefix') format('embedded-opentype'),
+        url('TacticSansExd-Bld.woff2') format('woff2'),
+        url('TacticSansExd-Bld.woff') format('woff'),
+        url('TacticSansExd-Bld.ttf') format('truetype');
+    font-weight: bold;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Tactic Sans Extended';
+    src: url('TacticSansExd-BldIt.eot');
+    src: local('Tactic Sans Extended Bold Italic'), local('TacticSansExd-BldIt'),
+        url('TacticSansExd-BldIt.eot?#iefix') format('embedded-opentype'),
+        url('TacticSansExd-BldIt.woff2') format('woff2'),
+        url('TacticSansExd-BldIt.woff') format('woff'),
+        url('TacticSansExd-BldIt.ttf') format('truetype');
+    font-weight: bold;
+    font-style: italic;
+}
+
+@font-face {
+    font-family: 'Tactic Sans Extended';
+    src: url('TacticSansExd-RegIt.eot');
+    src: local('Tactic Sans Extended Italic'), local('TacticSansExd-RegIt'),
+        url('TacticSansExd-RegIt.eot?#iefix') format('embedded-opentype'),
+        url('TacticSansExd-RegIt.woff2') format('woff2'),
+        url('TacticSansExd-RegIt.woff') format('woff'),
+        url('TacticSansExd-RegIt.ttf') format('truetype');
+    font-weight: normal;
+    font-style: italic;
+}
+
+@font-face {
+    font-family: 'Tactic Sans Extended';
+    src: url('TacticSansExd-Med.eot');
+    src: local('Tactic Sans Extended Medium'), local('TacticSansExd-Med'),
+        url('TacticSansExd-Med.eot?#iefix') format('embedded-opentype'),
+        url('TacticSansExd-Med.woff2') format('woff2'),
+        url('TacticSansExd-Med.woff') format('woff'),
+        url('TacticSansExd-Med.ttf') format('truetype');
+    font-weight: 500;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Tactic Sans Extended';
+    src: url('TacticSansExd-MedIt.eot');
+    src: local('Tactic Sans Extended Medium Italic'), local('TacticSansExd-MedIt'),
+        url('TacticSansExd-MedIt.eot?#iefix') format('embedded-opentype'),
+        url('TacticSansExd-MedIt.woff2') format('woff2'),
+        url('TacticSansExd-MedIt.woff') format('woff'),
+        url('TacticSansExd-MedIt.ttf') format('truetype');
+    font-weight: 500;
+    font-style: italic;
+}
+
+@font-face {
+    font-family: 'Tactic Sans Extended';
+    src: url('TacticSansExd-Lgt.eot');
+    src: local('Tactic Sans Extended Light'), local('TacticSansExd-Lgt'),
+        url('TacticSansExd-Lgt.eot?#iefix') format('embedded-opentype'),
+        url('TacticSansExd-Lgt.woff2') format('woff2'),
+        url('TacticSansExd-Lgt.woff') format('woff'),
+        url('TacticSansExd-Lgt.ttf') format('truetype');
+    font-weight: 300;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Tactic Sans Extended';
+    src: url('TacticSansExd-Thn.eot');
+    src: local('Tactic Sans Extended Thin'), local('TacticSansExd-Thn'),
+        url('TacticSansExd-Thn.eot?#iefix') format('embedded-opentype'),
+        url('TacticSansExd-Thn.woff2') format('woff2'),
+        url('TacticSansExd-Thn.woff') format('woff'),
+        url('TacticSansExd-Thn.ttf') format('truetype');
+    font-weight: 100;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Tactic Sans Extended Ultra';
+    src: url('TacticSansExd-Ult.eot');
+    src: local('Tactic Sans Extended Ultra'), local('TacticSansExd-Ult'),
+        url('TacticSansExd-Ult.eot?#iefix') format('embedded-opentype'),
+        url('TacticSansExd-Ult.woff2') format('woff2'),
+        url('TacticSansExd-Ult.woff') format('woff'),
+        url('TacticSansExd-Ult.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Tactic Sans Extended Ultra';
+    src: url('TacticSansExd-UltIt.eot');
+    src: local('Tactic Sans Extended Ultra Italic'), local('TacticSansExd-UltIt'),
+        url('TacticSansExd-UltIt.eot?#iefix') format('embedded-opentype'),
+        url('TacticSansExd-UltIt.woff2') format('woff2'),
+        url('TacticSansExd-UltIt.woff') format('woff'),
+        url('TacticSansExd-UltIt.ttf') format('truetype');
+    font-weight: normal;
+    font-style: italic;
+}
+
+@font-face {
+    font-family: 'Tactic Sans Extended';
+    src: url('TacticSansExd-Reg.eot');
+    src: local('Tactic Sans Extended'), local('TacticSansExd-Reg'),
+        url('TacticSansExd-Reg.eot?#iefix') format('embedded-opentype'),
+        url('TacticSansExd-Reg.woff2') format('woff2'),
+        url('TacticSansExd-Reg.woff') format('woff'),
+        url('TacticSansExd-Reg.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+

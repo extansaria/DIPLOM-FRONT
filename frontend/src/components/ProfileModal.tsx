@@ -2,6 +2,22 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Exercise, Profile, WorkoutsByDay } from "../types";
 
 type GoogleIdResponse = { credential: string };
+const GOOGLE_CLIENT_ID_FALLBACK = "504649785684-r9n6q2d0dping4r5jq3mrhdfekdooppu.apps.googleusercontent.com";
+type AuthFieldErrorKey =
+  | "loginEmail"
+  | "loginPass"
+  | "regNick"
+  | "regEmail"
+  | "regPass"
+  | "regPass2"
+  | "forgotNick"
+  | "resetToken"
+  | "resetPass"
+  | "resetPass2";
+
+/** Отдельные статические страницы (без SPA-хедера). */
+const PRIVACY_DOC_HREF = "/privacy.html";
+const TERMS_DOC_HREF = "/terms.html";
 
 function loadGsiScript(): Promise<void> {
   const id = "gsi-client-script";
@@ -25,10 +41,6 @@ function loadGsiScript(): Promise<void> {
     document.head.appendChild(s);
   });
 }
-
-/** Отдельные статические страницы (без SPA-хедера). */
-const PRIVACY_DOC_HREF = "/privacy.html";
-const TERMS_DOC_HREF = "/terms.html";
 
 function LegalFooter() {
   return (
@@ -67,6 +79,7 @@ type ProfileModalProps = {
   onRequestPasswordReset: (nicknameOrEmail: string) => Promise<{ error: string | null; message?: string; resetToken?: string }>;
   onResetPassword: (token: string, password: string) => Promise<string | null>;
   onRemoveFavorite?: (exercise: Exercise) => void;
+  onOpenFavorite?: (exercise: Exercise) => void;
 };
 
 export function ProfileModal({
@@ -82,12 +95,13 @@ export function ProfileModal({
   onGoogleSignIn,
   onRequestPasswordReset,
   onResetPassword,
-  onRemoveFavorite
+  onRemoveFavorite,
+  onOpenFavorite
 }: ProfileModalProps) {
   const savedDays = Object.values(workouts).filter((list) => list.length > 0).length;
   const [authScreen, setAuthScreen] = useState<AuthScreen>("login-email");
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
-  const googleHiddenHostRef = useRef<HTMLDivElement>(null);
+  const googleButtonHostRef = useRef<HTMLDivElement>(null);
 
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPass, setLoginPass] = useState("");
@@ -102,20 +116,15 @@ export function ProfileModal({
   const [resetPass, setResetPass] = useState("");
   const [resetPass2, setResetPass2] = useState("");
   const [formError, setFormError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<AuthFieldErrorKey, string>>>({});
   const [pending, setPending] = useState(false);
   const [loginPasswordFx, setLoginPasswordFx] = useState<"default" | "after-email">("default");
 
   useLayoutEffect(() => {
     const prev = document.body.style.overflow;
-    const prevPaddingRight = document.body.style.paddingRight;
-    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
     document.body.style.overflow = "hidden";
-    if (scrollbarWidth > 0) {
-      document.body.style.paddingRight = `${scrollbarWidth}px`;
-    }
     return () => {
       document.body.style.overflow = prev;
-      document.body.style.paddingRight = prevPaddingRight;
     };
   }, []);
 
@@ -127,10 +136,11 @@ export function ProfileModal({
         const r = await fetch(`${apiBaseUrl}/api/auth/google-client-id`);
         const d = (await r.json()) as { clientId?: string };
         if (cancelled) return;
-        const cid = typeof d.clientId === "string" && d.clientId.trim().length > 0 ? d.clientId.trim() : null;
+        const serverCid = typeof d.clientId === "string" ? d.clientId.trim() : "";
+        const cid = serverCid.length > 0 ? serverCid : GOOGLE_CLIENT_ID_FALLBACK;
         setGoogleClientId(cid);
       } catch {
-        if (!cancelled) setGoogleClientId(null);
+        if (!cancelled) setGoogleClientId(GOOGLE_CLIENT_ID_FALLBACK);
       }
     })();
     return () => {
@@ -142,17 +152,14 @@ export function ProfileModal({
     if (profile.authenticated || authScreen !== "login-email" || !googleClientId) return;
     let cancelled = false;
     void (async () => {
-      await Promise.resolve();
-      const host = googleHiddenHostRef.current;
-      if (!host || cancelled) return;
-      host.innerHTML = "";
       try {
         await loadGsiScript();
-        if (cancelled || !googleHiddenHostRef.current) return;
+        if (cancelled) return;
         const w = window as unknown as {
           google?: {
             accounts: {
               id: {
+                cancel?: () => void;
                 initialize: (cfg: { client_id: string; callback: (r: GoogleIdResponse) => void }) => void;
                 renderButton: (el: HTMLElement, opts: Record<string, string | number>) => void;
               };
@@ -160,9 +167,15 @@ export function ProfileModal({
           };
         };
         const gid = w.google?.accounts?.id;
-        const h = googleHiddenHostRef.current;
-        if (!gid || !h) return;
+        if (!gid) return;
+        const h = googleButtonHostRef.current;
+        if (!h) return;
         h.innerHTML = "";
+        try {
+          gid.cancel?.();
+        } catch {
+          /* ignore */
+        }
         gid.initialize({
           client_id: googleClientId,
           callback: (resp: GoogleIdResponse) => {
@@ -180,6 +193,9 @@ export function ProfileModal({
             })();
           }
         });
+        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+        const rectW = googleButtonHostRef.current?.getBoundingClientRect().width ?? 0;
+        const btnWidth = Math.min(440, Math.max(300, Math.floor(rectW) || 320));
         gid.renderButton(h, {
           type: "standard",
           theme: "outline",
@@ -188,7 +204,7 @@ export function ProfileModal({
           shape: "rectangular",
           locale: "ru",
           logo_alignment: "left",
-          width: 320
+          width: btnWidth
         });
       } catch {
         /* ignore */
@@ -196,36 +212,39 @@ export function ProfileModal({
     })();
     return () => {
       cancelled = true;
-      if (googleHiddenHostRef.current) googleHiddenHostRef.current.innerHTML = "";
+      const w = window as unknown as { google?: { accounts?: { id?: { cancel?: () => void } } } };
+      try {
+        w.google?.accounts?.id?.cancel?.();
+      } catch {
+        /* ignore */
+      }
+      if (googleButtonHostRef.current) googleButtonHostRef.current.innerHTML = "";
     };
   }, [googleClientId, authScreen, profile.authenticated, onGoogleSignIn, onClose]);
 
-  function triggerGoogleSignIn() {
-    const root = googleHiddenHostRef.current;
-    if (!root) return;
-    const inner =
-      (root.querySelector('[role="button"]') as HTMLElement | null) ||
-      (root.querySelector("iframe")?.parentElement?.querySelector('[role="button"]') as HTMLElement | null);
-    inner?.click();
-  }
-
   function clearErrors() {
     setFormError("");
+    setFieldErrors({});
     setForgotInfo("");
+  }
+
+  function setFieldError(field: AuthFieldErrorKey, message: string) {
+    setFieldErrors({ [field]: message });
+    setFormError("");
   }
 
   async function submitContinueEmail() {
     clearErrors();
     const email = loginEmail.trim();
     if (!isValidEmail(email)) {
-      setFormError("Укажите корректный email.");
+      setFieldError("loginEmail", "Укажите корректный email.");
       return;
     }
     setPending(true);
     try {
       const err = await onCheckLoginEmail(email);
       if (err) {
-        setFormError(err);
+        setFieldError("loginEmail", err);
         return;
       }
       setLoginEmail(email);
@@ -242,14 +261,14 @@ export function ProfileModal({
     setLoginBanner("");
     const email = loginEmail.trim();
     if (!isValidEmail(email)) {
-      setFormError("Укажите корректный email.");
+      setFieldError("loginEmail", "Укажите корректный email.");
       setAuthScreen("login-email");
       return;
     }
     setPending(true);
     try {
       const err = await onLogin(email, loginPass);
-      if (err) setFormError(err);
+      if (err) setFieldError("loginPass", err);
       else {
         setLoginPass("");
         onClose();
@@ -261,12 +280,20 @@ export function ProfileModal({
 
   async function submitRegister() {
     clearErrors();
+    if (!regNick.trim()) {
+      setFieldError("regNick", "Укажите имя.");
+      return;
+    }
     if (!isValidEmail(regEmail)) {
-      setFormError("Укажите корректный email.");
+      setFieldError("regEmail", "Укажите корректный email.");
+      return;
+    }
+    if (regPass.length < 6 || !/\d/.test(regPass)) {
+      setFieldError("regPass", "Минимум 6 символов и хотя бы одна цифра.");
       return;
     }
     if (regPass !== regPass2) {
-      setFormError("Пароли не совпадают.");
+      setFieldError("regPass2", "Пароли не совпадают.");
       return;
     }
     setPending(true);
@@ -276,7 +303,13 @@ export function ProfileModal({
         password: regPass,
         email: regEmail.trim()
       });
-      if (err) setFormError(err);
+      if (err) {
+        const e = err.toLowerCase();
+        if (e.includes("email")) setFieldError("regEmail", err);
+        else if (e.includes("парол")) setFieldError("regPass", err);
+        else if (e.includes("им") || e.includes("nick")) setFieldError("regNick", err);
+        else setFormError(err);
+      }
       else {
         setRegPass("");
         setRegPass2("");
@@ -291,14 +324,14 @@ export function ProfileModal({
     clearErrors();
     const nick = forgotNick.trim();
     if (!nick) {
-      setFormError("Укажите имя или email.");
+      setFieldError("forgotNick", "Укажите имя или email.");
       return;
     }
     setPending(true);
     try {
       const result = await onRequestPasswordReset(nick);
       if (result.error) {
-        setFormError(result.error);
+        setFieldError("forgotNick", result.error);
         return;
       }
       if (result.resetToken) {
@@ -316,17 +349,17 @@ export function ProfileModal({
   async function submitReset() {
     clearErrors();
     if (resetPass !== resetPass2) {
-      setFormError("Пароли не совпадают.");
+      setFieldError("resetPass2", "Пароли не совпадают.");
       return;
     }
     if (!resetToken.trim()) {
-      setFormError("Введите код сброса.");
+      setFieldError("resetToken", "Введите код сброса.");
       return;
     }
     setPending(true);
     try {
       const err = await onResetPassword(resetToken.trim(), resetPass);
-      if (err) setFormError(err);
+      if (err) setFieldError("resetPass", err);
       else {
         setResetPass("");
         setResetPass2("");
@@ -362,11 +395,6 @@ export function ProfileModal({
             </p>
           </div>
           <div className="profile-modal-header-actions">
-            {profile.authenticated ? (
-              <button type="button" className="btn profile-header-logout" onClick={onLogout}>
-                Выйти
-              </button>
-            ) : null}
             <button type="button" className="close-btn" onClick={onClose} aria-label="Закрыть">
               ✕
             </button>
@@ -378,58 +406,68 @@ export function ProfileModal({
               {authScreen === "login-email" ? (
                 <div key="login-email-screen" className="profile-auth-screen profile-auth-screen-enter">
                   <div className="profile-auth-form profile-auth-form-tight">
-                    <label className="profile-auth-label">
-                      Электронная почта
+                    <label className="profile-auth-field">
+                      <span className="profile-auth-field-label">Электронная почта</span>
                       <input
-                        className="profile-auth-input"
+                        className="input profile-auth-input"
                         type="email"
                         inputMode="email"
                         value={loginEmail}
-                        onChange={(e) => setLoginEmail(e.target.value)}
+                        onChange={(e) => {
+                          setLoginEmail(e.target.value);
+                          setFieldErrors((prev) => ({ ...prev, loginEmail: undefined }));
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault();
                             void submitContinueEmail();
                           }
                         }}
-                        placeholder="Ваш адрес электронной почты"
+                        placeholder=""
                         autoComplete="email"
                       />
                     </label>
+                    {fieldErrors.loginEmail ? <p className="profile-auth-field-error">{fieldErrors.loginEmail}</p> : null}
                     <button type="button" className="btn profile-auth-continue" disabled={pending} onClick={() => void submitContinueEmail()}>
                       Продолжить
                     </button>
                     {googleClientId ? (
-                      <button
-                        type="button"
-                        className="profile-google-btn profile-google-after-continue"
-                        disabled={pending}
-                        onClick={() => triggerGoogleSignIn()}
-                        aria-label="Продолжить с Google"
-                      >
-                        <svg className="profile-google-btn-icon" width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
-                          <path
-                            fill="#EA4335"
-                            d="M24 9.5c3.46 0 6.66 1.22 9 3.22l6.75-6.75C34.9 2.36 29.7 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
+                      <div className="profile-google-wrap">
+                        <div className={`profile-google-stack${pending ? " profile-google-stack--disabled" : ""}`}>
+                          <div
+                            ref={googleButtonHostRef}
+                            className="profile-google-hit"
+                            aria-label="Вход через Google"
                           />
-                          <path
-                            fill="#4285F4"
-                            d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.62 3.11-2.48 5.75-5.28 7.53l7.98 6.19C44.43 37.18 46.98 31.55 46.98 24.55z"
-                          />
-                          <path
-                            fill="#FBBC05"
-                            d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.98-6.19z"
-                          />
-                          <path
-                            fill="#34A853"
-                            d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.98-6.19c-2.21 1.49-5.03 2.37-7.91 2.37-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
-                          />
-                        </svg>
-                        Продолжить с Google
-                      </button>
-                    ) : null}
+                          <div className="profile-google-facade profile-google-btn profile-google-after-continue" aria-hidden="true">
+                            <svg className="profile-google-btn-icon" width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
+                              <path
+                                fill="#EA4335"
+                                d="M24 9.5c3.46 0 6.66 1.22 9 3.22l6.75-6.75C34.9 2.36 29.7 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
+                              />
+                              <path
+                                fill="#4285F4"
+                                d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.62 3.11-2.48 5.75-5.28 7.53l7.98 6.19C44.43 37.18 46.98 31.55 46.98 24.55z"
+                              />
+                              <path
+                                fill="#FBBC05"
+                                d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.98-6.19z"
+                              />
+                              <path
+                                fill="#34A853"
+                                d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.98-6.19c-2.21 1.49-5.03 2.37-7.91 2.37-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+                              />
+                            </svg>
+                            Продолжить с Google
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="muted profile-auth-hint" style={{ marginTop: 10, fontSize: "0.86rem" }}>
+                        Вход через Google недоступен: на сервере не задан GOOGLE_CLIENT_ID.
+                      </p>
+                    )}
                   </div>
-                  <div ref={googleHiddenHostRef} className="profile-google-hidden-host" aria-hidden="true" />
                   {loginBanner ? <p className="profile-auth-hint profile-auth-hint-success">{loginBanner}</p> : null}
                   {formError ? <p className="profile-auth-error">{formError}</p> : null}
                   <p className="profile-auth-footer-row muted">
@@ -456,38 +494,44 @@ export function ProfileModal({
                   }`}
                 >
                   <div className="profile-auth-form profile-auth-form-tight">
-                    <div className="profile-auth-label profile-password-field">
-                      <div className="profile-password-label-row">
-                        <span id="login-password-label">Пароль</span>
-                        <button
-                          type="button"
-                          className="profile-auth-link profile-password-forgot-inline"
-                          disabled={pending}
-                          onClick={() => {
-                            clearErrors();
-                            setForgotNick(loginEmail.trim());
-                            setLoginPasswordFx("default");
-                            setAuthScreen("forgot");
-                          }}
-                        >
-                          Забыли пароль?
-                        </button>
-                      </div>
-                      <input
-                        id="login-password-input"
-                        className="profile-auth-input"
-                        type="password"
-                        value={loginPass}
-                        onChange={(e) => setLoginPass(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            void submitPasswordLogin();
-                          }
+                    <div className="profile-password-with-link">
+                      <label className="profile-auth-field">
+                        <span className="profile-auth-field-label" id="login-password-label">
+                          Пароль
+                        </span>
+                        <input
+                          id="login-password-input"
+                          className="input profile-auth-input"
+                          type="password"
+                          value={loginPass}
+                        onChange={(e) => {
+                          setLoginPass(e.target.value);
+                          setFieldErrors((prev) => ({ ...prev, loginPass: undefined }));
                         }}
-                        autoComplete="current-password"
-                        aria-labelledby="login-password-label"
-                      />
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              void submitPasswordLogin();
+                            }
+                          }}
+                          autoComplete="current-password"
+                          aria-labelledby="login-password-label"
+                        />
+                      </label>
+                      {fieldErrors.loginPass ? <p className="profile-auth-field-error">{fieldErrors.loginPass}</p> : null}
+                      <button
+                        type="button"
+                        className="profile-auth-link profile-password-forgot-inline"
+                        disabled={pending}
+                        onClick={() => {
+                          clearErrors();
+                          setForgotNick(loginEmail.trim());
+                          setLoginPasswordFx("default");
+                          setAuthScreen("forgot");
+                        }}
+                      >
+                        Забыли пароль?
+                      </button>
                     </div>
                     <div className="profile-login-password-actions">
                       <button type="button" className="btn primary profile-auth-submit-wide" disabled={pending} onClick={() => void submitPasswordLogin()}>
@@ -515,50 +559,66 @@ export function ProfileModal({
               ) : authScreen === "register" ? (
                 <div key="register-screen" className="profile-auth-screen profile-auth-screen-enter">
                   <div className="profile-auth-form">
-                    <label className="profile-auth-label">
-                      Имя
+                    <label className="profile-auth-field">
+                      <span className="profile-auth-field-label">Имя</span>
                       <input
-                        className="profile-auth-input"
+                        className="input profile-auth-input"
                         value={regNick}
-                        onChange={(e) => setRegNick(e.target.value)}
+                        onChange={(e) => {
+                          setRegNick(e.target.value);
+                          setFieldErrors((prev) => ({ ...prev, regNick: undefined }));
+                        }}
                         autoComplete="username"
-                        placeholder="Введите ваше имя"
+                        placeholder=""
                       />
                     </label>
-                    <label className="profile-auth-label">
-                      Email
+                    {fieldErrors.regNick ? <p className="profile-auth-field-error">{fieldErrors.regNick}</p> : null}
+                    <label className="profile-auth-field">
+                      <span className="profile-auth-field-label">Email</span>
                       <input
-                        className="profile-auth-input"
+                        className="input profile-auth-input"
                         type="email"
                         value={regEmail}
-                        onChange={(e) => setRegEmail(e.target.value)}
+                        onChange={(e) => {
+                          setRegEmail(e.target.value);
+                          setFieldErrors((prev) => ({ ...prev, regEmail: undefined }));
+                        }}
                         required
                         autoComplete="email"
-                        placeholder="Введите ваш email"
+                        placeholder=""
                       />
                     </label>
-                    <label className="profile-auth-label">
-                      Пароль
+                    {fieldErrors.regEmail ? <p className="profile-auth-field-error">{fieldErrors.regEmail}</p> : null}
+                    <label className="profile-auth-field">
+                      <span className="profile-auth-field-label">Пароль</span>
                       <input
-                        className="profile-auth-input"
+                        className="input profile-auth-input"
                         type="password"
                         value={regPass}
-                        onChange={(e) => setRegPass(e.target.value)}
+                        onChange={(e) => {
+                          setRegPass(e.target.value);
+                          setFieldErrors((prev) => ({ ...prev, regPass: undefined }));
+                        }}
                         autoComplete="new-password"
-                        placeholder="Введите ваш пароль"
+                        placeholder=""
                       />
                     </label>
-                    <label className="profile-auth-label">
-                      Подтвердить пароль
+                    {fieldErrors.regPass ? <p className="profile-auth-field-error">{fieldErrors.regPass}</p> : null}
+                    <label className="profile-auth-field">
+                      <span className="profile-auth-field-label">Подтвердить пароль</span>
                       <input
-                        className="profile-auth-input"
+                        className="input profile-auth-input"
                         type="password"
                         value={regPass2}
-                        onChange={(e) => setRegPass2(e.target.value)}
+                        onChange={(e) => {
+                          setRegPass2(e.target.value);
+                          setFieldErrors((prev) => ({ ...prev, regPass2: undefined }));
+                        }}
                         autoComplete="new-password"
-                        placeholder="Повторите пароль"
+                        placeholder=""
                       />
                     </label>
+                    {fieldErrors.regPass2 ? <p className="profile-auth-field-error">{fieldErrors.regPass2}</p> : null}
                     <button
                       type="button"
                       className="btn primary profile-auth-submit profile-auth-submit-wide"
@@ -591,16 +651,21 @@ export function ProfileModal({
                     инструкциям администратора или письму на email.
                   </p>
                   <div className="profile-auth-form">
-                    <label className="profile-auth-label">
-                      Имя или email
+                    <label className="profile-auth-field">
+                      <span className="profile-auth-field-label">Имя или email</span>
                       <input
-                        className="profile-auth-input"
+                        className="input profile-auth-input"
                         type="text"
                         value={forgotNick}
-                        onChange={(e) => setForgotNick(e.target.value)}
+                        onChange={(e) => {
+                          setForgotNick(e.target.value);
+                          setFieldErrors((prev) => ({ ...prev, forgotNick: undefined }));
+                        }}
                         autoComplete="username"
+                        placeholder=""
                       />
                     </label>
+                    {fieldErrors.forgotNick ? <p className="profile-auth-field-error">{fieldErrors.forgotNick}</p> : null}
                     <button type="button" className="btn primary profile-auth-submit" disabled={pending} onClick={() => void submitForgot()}>
                       Запросить сброс пароля
                     </button>
@@ -639,23 +704,35 @@ export function ProfileModal({
                     Вставьте код сброса и задайте новый пароль (не меньше 6 букв и хотя бы одна цифра).
                   </p>
                   <div className="profile-auth-form">
-                    <label className="profile-auth-label">
-                      Код сброса
+                    <label className="profile-auth-field">
+                      <span className="profile-auth-field-label">Код сброса</span>
                       <input
-                        className="profile-auth-input profile-auth-input-mono"
+                        className="input profile-auth-input profile-auth-input-mono"
                         value={resetToken}
-                        onChange={(e) => setResetToken(e.target.value)}
+                        onChange={(e) => {
+                          setResetToken(e.target.value);
+                          setFieldErrors((prev) => ({ ...prev, resetToken: undefined }));
+                        }}
                         autoComplete="one-time-code"
                       />
                     </label>
-                    <label className="profile-auth-label">
-                      Новый пароль
-                      <input className="profile-auth-input" type="password" value={resetPass} onChange={(e) => setResetPass(e.target.value)} autoComplete="new-password" />
+                    {fieldErrors.resetToken ? <p className="profile-auth-field-error">{fieldErrors.resetToken}</p> : null}
+                    <label className="profile-auth-field">
+                      <span className="profile-auth-field-label">Новый пароль</span>
+                      <input className="input profile-auth-input" type="password" value={resetPass} onChange={(e) => {
+                        setResetPass(e.target.value);
+                        setFieldErrors((prev) => ({ ...prev, resetPass: undefined }));
+                      }} autoComplete="new-password" />
                     </label>
-                    <label className="profile-auth-label">
-                      Повтор пароля
-                      <input className="profile-auth-input" type="password" value={resetPass2} onChange={(e) => setResetPass2(e.target.value)} autoComplete="new-password" />
+                    {fieldErrors.resetPass ? <p className="profile-auth-field-error">{fieldErrors.resetPass}</p> : null}
+                    <label className="profile-auth-field">
+                      <span className="profile-auth-field-label">Повтор пароля</span>
+                      <input className="input profile-auth-input" type="password" value={resetPass2} onChange={(e) => {
+                        setResetPass2(e.target.value);
+                        setFieldErrors((prev) => ({ ...prev, resetPass2: undefined }));
+                      }} autoComplete="new-password" />
                     </label>
+                    {fieldErrors.resetPass2 ? <p className="profile-auth-field-error">{fieldErrors.resetPass2}</p> : null}
                     <button type="button" className="btn primary profile-auth-submit" disabled={pending} onClick={() => void submitReset()}>
                       Сохранить новый пароль
                     </button>
@@ -677,20 +754,7 @@ export function ProfileModal({
             </div>
           ) : (
             <>
-              <p className="muted">Имя: {profile.nickname}</p>
               {profile.email ? <p className="muted">Email: {profile.email}</p> : null}
-              <p className="profile-auth-logged-legal">
-                <a href={PRIVACY_DOC_HREF} target="_blank" rel="noopener noreferrer" className="profile-auth-inline-link">
-                  Политика конфиденциальности
-                </a>
-                <span className="profile-auth-legal-sep muted" aria-hidden="true">
-                  {" "}
-                  ·{" "}
-                </span>
-                <a href={TERMS_DOC_HREF} target="_blank" rel="noopener noreferrer" className="profile-auth-inline-link">
-                  Условия пользования
-                </a>
-              </p>
               <h3>Избранные упражнения</h3>
               {favorites.length === 0 ? (
                 <p className="empty">Пока нет добавленных упражнений.</p>
@@ -698,7 +762,14 @@ export function ProfileModal({
                 <div className="tags filter-tags">
                   {favorites.map((item) => (
                     <span key={item.id} className="chip profile-fav-chip">
-                      {item.name}
+                      <button
+                        type="button"
+                        className="profile-fav-open"
+                        onClick={() => onOpenFavorite?.(item)}
+                        aria-label={`Открыть карточку: ${item.name}`}
+                      >
+                        {item.name}
+                      </button>
                       {onRemoveFavorite ? (
                         <button type="button" className="profile-fav-remove" onClick={() => onRemoveFavorite(item)} aria-label="Убрать из избранного">
                           ×
@@ -710,6 +781,9 @@ export function ProfileModal({
               )}
               <h3>Моя тренировка</h3>
               <p className="muted">Заполнено тренировочных дней: {savedDays}</p>
+              <button type="button" className="btn profile-logout-danger" onClick={onLogout}>
+                Выйти
+              </button>
             </>
           )}
         </div>

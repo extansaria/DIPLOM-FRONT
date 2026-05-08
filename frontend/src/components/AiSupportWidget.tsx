@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { SendIcon, SparkIcon } from "./icons";
 import type { AiMatch, ChatMessage } from "../types";
+import { getApiBaseUrl } from "../apiBaseUrl";
 
-const API_BASE_URL = (typeof window !== "undefined" && (window as Window & { __AI_API_URL__?: string }).__AI_API_URL__) || "http://localhost:3001";
+const API_BASE_URL = getApiBaseUrl();
 const CHAT_STORAGE_KEY = "gydex-ai-chat-messages-v1";
 
 const DEFAULT_MESSAGES: ChatMessage[] = [
@@ -341,7 +342,7 @@ export function AiSupportWidget({ onOpenExerciseBySlug }: AiSupportWidgetProps) 
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && void sendMessage()}
-              placeholder="Напишите вопрос..."
+              placeholder=""
               disabled={isLoading}
             />
             <button type="button" onClick={() => void sendMessage()} disabled={isLoading}>
